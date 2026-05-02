@@ -477,25 +477,53 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 // ===== DATA =====
+const API_URL = "https://script.google.com/macros/s/AKfycbxd5nATr6jkshSSZFhO2k666c59GU0qMpS81hUoDmJwoG_RIeuOQ__TnuSwSx4p4hswXQ/exec";  
 const PRICE = 79;
-let members = JSON.parse(localStorage.getItem('emby_members') || '[]');
-if (members.length === 0) {
-  const today = new Date();
-  const fmt = d => d.toISOString().split('T')[0];
-  const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
-  members = [
-    { id: 1, user:'john_emby', nick:'คุณจอห์น', paid: fmt(add(today,-25)), exp: fmt(add(today,5)) },
-    { id: 2, user:'somchai_x', nick:'คุณสมชาย', paid: fmt(add(today,-28)), exp: fmt(add(today,2)) },
-    { id: 3, user:'malee99', nick:'คุณมาลี', paid: fmt(add(today,-5)), exp: fmt(add(today,25)) },
-    { id: 4, user:'dave_th', nick:'คุณเดฟ', paid: fmt(add(today,-31)), exp: fmt(add(today,-1)) },
-    { id: 5, user:'noi_j', nick:'คุณน้อย', paid: fmt(add(today,-10)), exp: fmt(add(today,20)) },
-    { id: 6, user:'pim_star', nick:'คุณพิม', paid: fmt(add(today,-33)), exp: fmt(add(today,-3)) },
-  ];
-  saveMembers();
-}
-let editingId = null;
 
-function saveMembers() { localStorage.setItem('emby_members', JSON.stringify(members)); }
+// ❌ ห้ามใช้ localStorage แล้ว
+let members = [];
+
+// 🔥 โหลดข้อมูลจาก Google Sheet
+function loadMembers() {
+  fetch(API_URL)
+    .then(res => res.json())
+    .then(data => {
+      const rows = data.slice(1);
+
+      members = rows.map((r, i) => ({
+        id: i + 1,
+        user: r[0],
+        nick: r[1],
+        paid: r[2],
+        exp: r[3]
+      }));
+
+      renderTable && renderTable();
+      updateDashboard && updateDashboard();
+    });
+}
+
+// 🔥 ยิงข้อมูลเข้า Google Sheet
+function saveMembers(newMember) {
+  fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      emby: newMember.user,
+      name: newMember.nick,
+      pay: newMember.paid,
+      expire: newMember.exp
+    })
+  })
+  .then(() => {
+    loadMembers(); // ซิงค์ทันที
+  });
+}
+
+// โหลดตอนเปิดเว็บ
+window.onload = loadMembers;
+
+let editingId = null;
+</script>
 
 // ===== DATE UTILS =====
 const today = () => new Date(); today().setHours(0,0,0,0);
@@ -704,17 +732,28 @@ function saveMember() {
   const nick = document.getElementById('fNick').value.trim();
   const paid = document.getElementById('fPaid').value;
   const exp = document.getElementById('fExp').value;
-  if (!user || !nick || !paid || !exp) { alert('กรุณากรอกข้อมูลให้ครบ'); return; }
-  if (editingId) {
-    const idx = members.findIndex(m => m.id === editingId);
-    members[idx] = { ...members[idx], user, nick, paid, exp };
-  } else {
-    const id = members.length ? Math.max(...members.map(m => m.id)) + 1 : 1;
-    members.push({ id, user, nick, paid, exp });
+
+  if (!user || !nick || !paid || !exp) {
+    alert('กรุณากรอกข้อมูลให้ครบ');
+    return;
   }
-  saveMembers();
-  closeModal();
-  renderMembers();
+
+  const newMember = { user, nick, paid, exp };
+
+  // 🔥 ยิงไป Google Sheet
+  fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      emby: user,
+      name: nick,
+      pay: paid,
+      expire: exp
+    })
+  })
+  .then(() => {
+    loadMembers(); // โหลดใหม่ = ซิงค์ทันที
+    closeModal();
+  });
 }
 
 function renewMember(id) {
