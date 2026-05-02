@@ -480,10 +480,9 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxd5nATr6jkshSSZFhO2k666c59GU0qMpS81hUoDmJwoG_RIeuOQ__TnuSwSx4p4hswXQ/exec";  
 const PRICE = 79;
 
-// ❌ ห้ามใช้ localStorage แล้ว
 let members = [];
 
-// 🔥 โหลดข้อมูลจาก Google Sheet
+// โหลดจาก Google Sheet
 function loadMembers() {
   fetch(API_URL)
     .then(res => res.json())
@@ -498,24 +497,39 @@ function loadMembers() {
         exp: r[3]
       }));
 
-      renderTable && renderTable();
+      renderMembers();
       updateDashboard && updateDashboard();
     });
 }
 
-// 🔥 ยิงข้อมูลเข้า Google Sheet
-function saveMembers(newMember) {
+// เพิ่มสมาชิก
+function saveMember() {
+  const user = document.getElementById('fUser').value.trim();
+  const nick = document.getElementById('fNick').value.trim();
+  const paid = document.getElementById('fPaid').value;
+  const exp = document.getElementById('fExp').value;
+
+  if (!user || !nick || !paid || !exp) {
+    alert('กรุณากรอกข้อมูลให้ครบ');
+    return;
+  }
+
   fetch(API_URL, {
     method: "POST",
     body: JSON.stringify({
-      emby: newMember.user,
-      name: newMember.nick,
-      pay: newMember.paid,
-      expire: newMember.exp
+      emby: user,
+      name: nick,
+      pay: paid,
+      expire: exp
     })
   })
   .then(() => {
-    loadMembers(); // ซิงค์ทันที
+    loadMembers(); // โหลดใหม่
+    closeModal();
+  })
+  .catch(err => {
+    console.error(err);
+    alert("บันทึกไม่สำเร็จ");
   });
 }
 
