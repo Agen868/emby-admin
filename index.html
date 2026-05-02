@@ -539,7 +539,9 @@ async function deleteMemberFromDb(id) {
 // ===== DATE UTILS =====
 const today = () => new Date(); today().setHours(0,0,0,0);
 function daysLeft(expStr) {
-  const exp = new Date(expStr); exp.setHours(0,0,0,0);
+  if (!expStr) return 0;
+  const parts = expStr.split('-');
+  const exp = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
   const now = new Date(); now.setHours(0,0,0,0);
   return Math.round((exp - now) / 86400000);
 }
@@ -708,9 +710,9 @@ function renderMembers() {
         <td>${dlStr}</td>
         <td><span class="status-pill ${s.cls}"><span class="dot ${s.dot}"></span>${s.label}</span></td>
         <td style="display:flex;gap:6px;">
-          <button class="btn btn-ghost btn-sm" onclick="openEditMember(${m.id})">แก้ไข</button>
-          <button class="btn btn-danger btn-sm" onclick="renewMember(${m.id})">ต่ออายุ</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteMember(${m.id})">ลบ</button>
+          <button class="btn btn-ghost btn-sm" onclick="openEditMember('${m.id}')">แก้ไข</button>
+          <button class="btn btn-danger btn-sm" onclick="renewMember('${m.id}')">ต่ออายุ</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteMember('${m.id}')">ลบ</button>
         </td>
       </tr>`;
   }).join('');
@@ -729,8 +731,9 @@ function openAddMember() {
 }
 
 function openEditMember(id) {
-  editingId = id;
-  const m = members.find(x => x.id === id);
+  editingId = String(id);
+  const m = members.find(x => String(x.id) === String(id));
+  if (!m) return;
   document.getElementById('modalTitle').textContent = 'แก้ไขสมาชิก';
   document.getElementById('fUser').value = m.user;
   document.getElementById('fNick').value = m.nick;
@@ -757,7 +760,8 @@ async function saveMember() {
 }
 
 async function renewMember(id) {
-  const m = members.find(x => x.id === id);
+  const m = members.find(x => String(x.id) === String(id));
+  if (!m) return;
   const base = daysLeft(m.exp) < 0 ? new Date() : new Date(m.exp);
   base.setDate(base.getDate() + 30);
   const updated = { ...m, paid: new Date().toISOString().split('T')[0], exp: base.toISOString().split('T')[0] };
@@ -766,7 +770,7 @@ async function renewMember(id) {
 
 async function deleteMember(id) {
   if (!confirm('ลบสมาชิกนี้?')) return;
-  await deleteMemberFromDb(id);
+  await deleteMemberFromDb(String(id));
 }
 
 function closeModal() { document.getElementById('memberModal').classList.remove('open'); }
