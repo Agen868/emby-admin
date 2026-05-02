@@ -475,27 +475,66 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+// ===== FIREBASE CONFIG =====
+const firebaseConfig = {
+  apiKey: "AIzaSyCZ3U48VJoDfjie6AbRclXzB55pdllAf8E",
+  authDomain: "emby-admin.firebaseapp.com",
+  projectId: "emby-admin",
+  storageBucket: "emby-admin.firebasestorage.app",
+  messagingSenderId: "1015976505071",
+  appId: "1:1015976505071:web:b4ae60edd3f2854373351a"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const membersCol = collection(db, "members");
+
+// Sign in anonymously ก่อนเข้าถึง Firestore
+signInAnonymously(auth).catch(err => console.error('Auth error:', err));
+
 // ===== DATA =====
 const PRICE = 79;
-let members = JSON.parse(localStorage.getItem('emby_members') || '[]');
-if (members.length === 0) {
-  const today = new Date();
-  const fmt = d => d.toISOString().split('T')[0];
-  const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
-  members = [
-    { id: 1, user:'john_emby', nick:'คุณจอห์น', paid: fmt(add(today,-25)), exp: fmt(add(today,5)) },
-    { id: 2, user:'somchai_x', nick:'คุณสมชาย', paid: fmt(add(today,-28)), exp: fmt(add(today,2)) },
-    { id: 3, user:'malee99', nick:'คุณมาลี', paid: fmt(add(today,-5)), exp: fmt(add(today,25)) },
-    { id: 4, user:'dave_th', nick:'คุณเดฟ', paid: fmt(add(today,-31)), exp: fmt(add(today,-1)) },
-    { id: 5, user:'noi_j', nick:'คุณน้อย', paid: fmt(add(today,-10)), exp: fmt(add(today,20)) },
-    { id: 6, user:'pim_star', nick:'คุณพิม', paid: fmt(add(today,-33)), exp: fmt(add(today,-3)) },
-  ];
-  saveMembers();
-}
+let members = [];
 let editingId = null;
 
-function saveMembers() { localStorage.setItem('emby_members', JSON.stringify(members)); }
+// แสดง loading state
+function setLoading(on) {
+  const el = document.getElementById('loadingOverlay');
+  if (el) el.style.display = on ? 'flex' : 'none';
+}
+
+// ดึงข้อมูลจาก Firestore แบบ real-time
+function startRealtimeSync() {
+  setLoading(true);
+  onSnapshot(membersCol, (snapshot) => {
+    members = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+    setLoading(false);
+    const activePage = document.querySelector('.page.active');
+    if (activePage) {
+      const pageId = activePage.id;
+      if (pageId === 'page-dashboard') renderDashboard();
+      if (pageId === 'page-members') renderMembers();
+    }
+  }, (err) => {
+    setLoading(false);
+    console.error('Firestore error:', err);
+  });
+}
+
+async function saveMembers() {}
+
+async function saveMemberToDb(member) {
+  await setDoc(doc(db, "members", String(member.id)), member);
+}
+
+async function deleteMemberFromDb(id) {
+  await deleteDoc(doc(db, "members", String(id)));
+}
 
 // ===== DATE UTILS =====
 const today = () => new Date(); today().setHours(0,0,0,0);
@@ -554,6 +593,7 @@ function showPage(name) {
 let chartRevenue, chartStatus;
 function initApp() {
   document.getElementById('todayDate').textContent = new Date().toLocaleDateString('th-TH', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  startRealtimeSync();
   renderDashboard();
 }
 
@@ -699,40 +739,34 @@ function openEditMember(id) {
   document.getElementById('memberModal').classList.add('open');
 }
 
-function saveMember() {
+async function saveMember() {
   const user = document.getElementById('fUser').value.trim();
   const nick = document.getElementById('fNick').value.trim();
   const paid = document.getElementById('fPaid').value;
   const exp = document.getElementById('fExp').value;
   if (!user || !nick || !paid || !exp) { alert('กรุณากรอกข้อมูลให้ครบ'); return; }
+  let id;
   if (editingId) {
-    const idx = members.findIndex(m => m.id === editingId);
-    members[idx] = { ...members[idx], user, nick, paid, exp };
+    id = editingId;
   } else {
-    const id = members.length ? Math.max(...members.map(m => m.id)) + 1 : 1;
-    members.push({ id, user, nick, paid, exp });
+    id = members.length ? String(Math.max(...members.map(m => Number(m.id))) + 1) : '1';
   }
-  saveMembers();
+  const member = { id, user, nick, paid, exp };
+  await saveMemberToDb(member);
   closeModal();
-  renderMembers();
 }
 
-function renewMember(id) {
+async function renewMember(id) {
   const m = members.find(x => x.id === id);
   const base = daysLeft(m.exp) < 0 ? new Date() : new Date(m.exp);
   base.setDate(base.getDate() + 30);
-  const idx = members.findIndex(x => x.id === id);
-  members[idx].paid = new Date().toISOString().split('T')[0];
-  members[idx].exp = base.toISOString().split('T')[0];
-  saveMembers();
-  renderMembers();
+  const updated = { ...m, paid: new Date().toISOString().split('T')[0], exp: base.toISOString().split('T')[0] };
+  await saveMemberToDb(updated);
 }
 
-function deleteMember(id) {
+async function deleteMember(id) {
   if (!confirm('ลบสมาชิกนี้?')) return;
-  members = members.filter(m => m.id !== id);
-  saveMembers();
-  renderMembers();
+  await deleteMemberFromDb(id);
 }
 
 function closeModal() { document.getElementById('memberModal').classList.remove('open'); }
@@ -787,6 +821,25 @@ function renderExpenses() {
   document.getElementById('netIncome').textContent = (net >= 0 ? '+' : '') + net.toLocaleString() + ' ฿';
   document.getElementById('netIncome').style.color = net >= 0 ? 'var(--green)' : 'var(--red)';
 }
+
+// ===== EXPOSE TO GLOBAL =====
+window.doLogin = doLogin;
+window.doLogout = doLogout;
+window.showPage = showPage;
+window.openAddMember = openAddMember;
+window.openEditMember = openEditMember;
+window.saveMember = saveMember;
+window.renewMember = renewMember;
+window.deleteMember = deleteMember;
+window.closeModal = closeModal;
 </script>
+<!-- LOADING OVERLAY -->
+<div id="loadingOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,17,23,0.7);z-index:999;align-items:center;justify-content:center;backdrop-filter:blur(3px);">
+  <div style="text-align:center;">
+    <div style="width:36px;height:36px;border:3px solid rgba(82,181,75,0.2);border-top-color:#52b54b;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 12px;"></div>
+    <div style="color:#9aa0b8;font-size:13px;font-family:'IBM Plex Sans Thai',sans-serif;">กำลังซิงค์ข้อมูล...</div>
+  </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 </body>
 </html>
